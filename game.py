@@ -60,6 +60,13 @@ class Game:
         self.net = NetSession(mode=mode if mode in ("host", "client") else "single", host=host, port=port)
         self.remote_intent = {}
         self.last_snapshot = None
+        network_rules = self.rules.get("network", {})
+        input_hz = max(10, int(network_rules.get("input_hz", 30)))
+        snapshot_hz = max(5, int(network_rules.get("snapshot_hz", 20)))
+        self.input_send_interval = 1.0 / float(input_hz)
+        self.snapshot_send_interval = 1.0 / float(snapshot_hz)
+        self.last_input_sent_at = 0.0
+        self.last_snapshot_sent_at = 0.0
 
         self._init_world()
         pygame.display.set_icon(player_image_right)
@@ -173,7 +180,10 @@ class Game:
         if not self.paused:
             keys = pygame.key.get_pressed()
             intent = get_player_intent(keys)
-            self.net.send({"type": "input", "intent": intent})
+            now = pygame.time.get_ticks() / 1000.0
+            if now - self.last_input_sent_at >= self.input_send_interval:
+                self.net.send({"type": "input", "intent": intent})
+                self.last_input_sent_at = now
 
         incoming = self.net.poll_receive()
         if incoming and incoming.get("type") == "snapshot":
@@ -190,6 +200,8 @@ class Game:
             incoming = self.net.poll_receive()
             if incoming and incoming.get("type") == "input":
                 self.remote_intent = incoming.get("intent", {})
+            if not self.net.connected:
+                self.remote_intent = {}
 
         if not self.paused and not self.game_over and not self.victory_cutscene and not self.victory_done:
             keys = pygame.key.get_pressed()
@@ -266,7 +278,10 @@ class Game:
             self._draw_pause_menu()
 
         if self.mode == "host":
-            self.net.send({"type": "snapshot", "payload": world_snapshot(self)})
+            now = pygame.time.get_ticks() / 1000.0
+            if now - self.last_snapshot_sent_at >= self.snapshot_send_interval:
+                self.net.send({"type": "snapshot", "payload": world_snapshot(self)})
+                self.last_snapshot_sent_at = now
 
     def _update_secondary_player(self, player):
         player.velocity_y += GRAVITY

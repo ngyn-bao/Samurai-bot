@@ -7,7 +7,9 @@
   },
   "network": {
     "default_host": "127.0.0.1",
-    "port": 5055
+    "port": 5055,
+    "input_hz": 30,
+    "snapshot_hz": 20
   },
   "time_warp": {
     "duration_ms": 4000,

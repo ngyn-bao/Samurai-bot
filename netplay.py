@@ -1,6 +1,8 @@
 import json
 import socket
 import time
+import select
+import errno
 
 
 class NetSession:
@@ -29,6 +31,13 @@ class NetSession:
         self.server_socket.listen(1)
         self.server_socket.setblocking(False)
 
+    def _configure_peer_socket(self, sock):
+        sock.setblocking(False)
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
     def _start_client(self):
         self._attempt_client_connect()
 
@@ -41,10 +50,37 @@ class NetSession:
 
         self.last_connect_attempt = now
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
         try:
-            sock.connect((self.host, self.port))
             sock.setblocking(False)
+            err = sock.connect_ex((self.host, self.port))
+
+            if err in (0, errno.EISCONN):
+                self._configure_peer_socket(sock)
+                self.peer_socket = sock
+                self.connected = True
+                self.read_buffer = ""
+                return
+
+            in_progress = {
+                getattr(errno, "EINPROGRESS", 10035),
+                getattr(errno, "EWOULDBLOCK", 10035),
+                getattr(errno, "EALREADY", 10037),
+                10035,
+                10036,
+                10037,
+            }
+            if err not in in_progress:
+                raise OSError(err, "connect_ex failed")
+
+            _, writable, _ = select.select([], [sock], [], 0.2)
+            if not writable:
+                raise OSError("connect timeout")
+
+            so_error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if so_error != 0:
+                raise OSError(so_error, "connect failed")
+
+            self._configure_peer_socket(sock)
             self.peer_socket = sock
             self.connected = True
             self.read_buffer = ""
@@ -77,7 +113,7 @@ class NetSession:
             return
         try:
             client, _ = self.server_socket.accept()
-            client.setblocking(False)
+            self._configure_peer_socket(client)
             self.peer_socket = client
             self.connected = True
             self.read_buffer = ""
@@ -92,6 +128,8 @@ class NetSession:
         data = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
         try:
             self.peer_socket.sendall(data)
+        except BlockingIOError:
+            return
         except OSError:
             self._drop_peer()
 
@@ -103,19 +141,26 @@ class NetSession:
         if self.peer_socket is None:
             return None
 
-        try:
-            chunk = self.peer_socket.recv(65536)
-        except BlockingIOError:
-            return None
-        except OSError:
-            self._drop_peer()
+        got_data = False
+        for _ in range(32):
+            try:
+                chunk = self.peer_socket.recv(65536)
+            except BlockingIOError:
+                break
+            except OSError:
+                self._drop_peer()
+                return None
+
+            if not chunk:
+                self._drop_peer()
+                return None
+
+            got_data = True
+            self.read_buffer += chunk.decode("utf-8", errors="ignore")
+
+        if not got_data:
             return None
 
-        if not chunk:
-            self._drop_peer()
-            return None
-
-        self.read_buffer += chunk.decode("utf-8", errors="ignore")
         if "\n" not in self.read_buffer:
             return None
 
