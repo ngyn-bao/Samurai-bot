@@ -1,0 +1,24 @@
+{
+  "coop": {
+    "enabled": true,
+    "require_all_players_at_exit": true,
+    "shared_lives": 2,
+    "friendly_fire": false
+  },
+  "network": {
+    "default_host": "127.0.0.1",
+    "port": 5055
+  },
+  "time_warp": {
+    "duration_ms": 4000,
+    "max_charges": 3,
+    "enemy_speed_multiplier": 0.5
+  },
+  "skins": {
+    "available": ["samurai", "samurai-2"],
+    "selected": {
+      "player1": "samurai",
+      "player2": "samurai-2"
+    }
+  }
+}

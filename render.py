@@ -7,13 +7,17 @@ from settings import *
 
 _HUD_FONT = None
 
-def draw(window, player, background_tiles, tiles, enemies, enemies2, shurikens, items, spikes, drones, bosses):
+def draw(window, player, background_tiles, tiles, enemies, enemies2, shurikens, items, spikes, drones, bosses, extra_players=None):
     draw_background(window)
     draw_background_tiles(window, background_tiles)
     draw_tiles(window, tiles)
     draw_spikes(window,spikes)
     draw_player(window, player)
     draw_shurikens(window, shurikens)
+    if extra_players:
+        for extra in extra_players:
+            draw_player(window, extra)
+            draw_shurikens(window, extra.shurikens)
     draw_enemies(window, enemies)
     draw_enemies2(window, enemies2)
     draw_drones(window, drones)
@@ -21,7 +25,7 @@ def draw(window, player, background_tiles, tiles, enemies, enemies2, shurikens, 
     draw_item(window, items)
     # pygame.draw.rect(window, "red", (TILE_SIZE, TILE_SIZE, 10 * player.max_health, 10))
     # pygame.draw.rect(window, "green", (TILE_SIZE, TILE_SIZE, 10 * player.health, 10))
-    draw_health_bar(window, player)
+    draw_health_bars(window, player, extra_players)
     draw_boss_health_bar(window, player, bosses)
     draw_time_warp_hud(window, player)
 
@@ -67,46 +71,46 @@ def draw_player(window, player):
     player.update_image()
     window.blit(player.image, player)
     
-def draw_health_bar(window, player):
+def draw_health_bar(window, player, bar_x, bar_y, label=None):
     if player.invincible and pygame.time.get_ticks() % 200 < 100:
         return
+
+    if label:
+        global _HUD_FONT
+        if _HUD_FONT is None:
+            _HUD_FONT = pygame.font.Font(GAME_FONT_PATH, 20)
+            _HUD_FONT.set_bold(True)
+        label_surface = _HUD_FONT.render(label, True, (230, 230, 230))
+        window.blit(label_surface, (bar_x, bar_y - 22))
+
     segments = player.max_health // HP_PER_SEGMENT
 
     for i in range(segments):
-        x = HEALTH_BAR_X + i * (HEALTH_SEGMENT_WIDTH)
-        y = HEALTH_BAR_Y
+        x = bar_x + i * HEALTH_SEGMENT_WIDTH
+        y = bar_y
 
-        # HP của segment này (0 → HP_PER_SEGMENT)
         segment_hp = player.health - i * HP_PER_SEGMENT
         segment_hp = max(0, min(HP_PER_SEGMENT, segment_hp))
 
-        rect = pygame.Rect(
-            x, y,
-            HEALTH_SEGMENT_WIDTH,
-            HEALTH_SEGMENT_HEIGHT
-        )
-
+        rect = pygame.Rect(x, y, HEALTH_SEGMENT_WIDTH, HEALTH_SEGMENT_HEIGHT)
         pygame.draw.rect(window, COLOR_EMPTY, rect)
 
         if segment_hp > 0:
-            fill_width = int(
-                HEALTH_SEGMENT_WIDTH * (segment_hp / HP_PER_SEGMENT)
-            )
-
-            fill_rect = pygame.Rect(
-                x, y,
-                fill_width,
-                HEALTH_SEGMENT_HEIGHT
-            )
-
+            fill_width = int(HEALTH_SEGMENT_WIDTH * (segment_hp / HP_PER_SEGMENT))
+            fill_rect = pygame.Rect(x, y, fill_width, HEALTH_SEGMENT_HEIGHT)
             pygame.draw.rect(window, COLOR_FILL, fill_rect)
-            
-        pygame.draw.rect(
-            window,
-            COLOR_BORDER,
-            rect,
-            BORDER_THICKNESS
-        )
+
+        pygame.draw.rect(window, COLOR_BORDER, rect, BORDER_THICKNESS)
+
+
+def draw_health_bars(window, player, extra_players=None):
+    draw_health_bar(window, player, HEALTH_BAR_X, HEALTH_BAR_Y, label="P1")
+
+    if extra_players:
+        player_bar_width = HEALTH_SEGMENT_WIDTH * MAX_SEGMENTS
+        p2_x = GAME_WIDTH - player_bar_width - HEALTH_BAR_X
+        for index, extra in enumerate(extra_players, start=2):
+            draw_health_bar(window, extra, p2_x, HEALTH_BAR_Y, label=f"P{index}")
 
 
 def draw_time_warp_hud(window, player):

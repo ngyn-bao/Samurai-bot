@@ -1,12 +1,24 @@
-import pygame
-from settings import GRAVITY, GAME_WIDTH, FRICTION, INFANTRYMAN_DAMAGE, TILE_SIZE, DRONE_DAMAGE, METALL_DAMAGE, ENEMY_BULLET_DAMAGE, BOSS_CONTACT_DAMAGE, PLAYER_VELOCITY_Y, TIME_WARP_ENEMY_SPEED_MULTIPLIER, TIME_WARP_MAX_CHARGES
+﻿import pygame
+from settings import GRAVITY, GAME_WIDTH, FRICTION, INFANTRYMAN_DAMAGE, TILE_SIZE, DRONE_DAMAGE, METALL_DAMAGE, ENEMY_BULLET_DAMAGE, BOSS_CONTACT_DAMAGE, PLAYER_VELOCITY_Y
 from items import drop_item, drop_item_from_box
 from images import life_energy_image, big_life_energy_image, time_warp_item_image, boss_key_item_image, score_ball_image
 from items import Item
 
 
-def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bosses):
-    enemy_speed_scale = TIME_WARP_ENEMY_SPEED_MULTIPLIER if player.is_time_warp_active() else 1.0
+def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bosses, all_players=None):
+    targets = all_players if all_players else [player]
+
+    def nearest_target(rect):
+        return min(
+            targets,
+            key=lambda p: (rect.centerx - p.centerx) ** 2 + (rect.centery - p.centery) ** 2,
+        )
+
+    configured_enemy_speed_multiplier = min(
+        1.0,
+        max(0.1, float(getattr(player, "time_warp_enemy_speed_multiplier", 0.5))),
+    )
+    enemy_speed_scale = configured_enemy_speed_multiplier if player.is_time_warp_active() else 1.0
     # FRICTION (x movement)
     # if player.direction == "left" and player.velocity_x < 0:
     #     player.velocity_x += FRICTION
@@ -30,6 +42,7 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
     #     player.x = GAME_WIDTH - player.width
     
     check_tile_collision_x(player, tiles)
+    player_bottom_before_gravity = player.bottom
     # JUMPING (y movement)
     player.velocity_y += GRAVITY
     player.y += player.velocity_y
@@ -104,9 +117,12 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
             if boss.health > 0 and not shuriken.used and shuriken.colliderect(boss):
                 shuriken.used = True
                 boss.on_hit(player.shuriken_damge, player)
-        # xoá shuriken đã dùng
-    shurikens[:] = [s for s in shurikens if not s.used \
-        and s.x + s.width > 0 and s.x < GAME_WIDTH]
+        # xo├í shuriken ─æ├ú d├╣ng
+    world_right = max((tile.right for tile in tiles), default=GAME_WIDTH) + TILE_SIZE
+    shurikens[:] = [
+        s for s in shurikens
+        if not s.used and s.x + s.width > -TILE_SIZE and s.x < world_right
+    ]
 
      # ===== MELEE ATTACK =====
     if player.attacking and player.attack_rect:
@@ -158,7 +174,8 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
                 boss.key_dropped = True
             continue
 
-        boss.update(player, enemy_speed_scale)
+        boss_target = nearest_target(boss)
+        boss.update(boss_target, enemy_speed_scale)
 
         if not player.invincible and player.colliderect(boss):
             player.health = max(0, player.health - BOSS_CONTACT_DAMAGE)
@@ -170,8 +187,10 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
                 player.health = max(0, player.health - player.max_health // 2)
                 player.set_invincible()
     
-    for enemy in enemies:
-        if player.x < enemy.x:
+    for enemy in enemies: #Metall
+        target = nearest_target(enemy)
+
+        if target.x < enemy.x:
             enemy.direction = "left"
         else:
             enemy.direction = "right"
@@ -182,11 +201,11 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
         
         if player.colliderect(enemy):
             stomped_guarding_metall = (
-                enemy.guarding
-                and player.velocity_y > 0
-                and player.bottom <= enemy.top + TILE_SIZE // 2
-                and player.centerx >= enemy.left
-                and player.centerx <= enemy.right
+                player.velocity_y > 1
+                and player.centery < enemy.centery
+                and player_bottom_before_gravity <= enemy.top + TILE_SIZE // 3
+                and player.centerx >= enemy.left + enemy.width // 5
+                and player.centerx <= enemy.right - enemy.width // 5
             )
 
             if stomped_guarding_metall:
@@ -203,7 +222,7 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
                 player.health = max(0, player.health)
                 player.set_invincible()
         
-        enemy.set_shooting(player, enemy)
+        enemy.set_shooting(target, enemy, targets)
         for bullet in enemy.bullets:
             bullet.x += bullet.velocity_x * enemy_speed_scale
             bullet.y += bullet.velocity_y * enemy_speed_scale
@@ -233,16 +252,16 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
     #         player.health -= 33
     #         player.set_invincible()
     for drone in drones:
-
         now = pygame.time.get_ticks()
-        distance = abs(drone.centerx - player.centerx)
+        target = nearest_target(drone)
+        distance = abs(drone.centerx - target.centerx)
 
         # ======================
         # PATROL
         # ======================
         if drone.state == "patrol":
 
-            # bay qua lại bình thường
+            # bay qua lß║íi b├¼nh th╞░ß╗¥ng
             drone.x += drone.velocity_x * enemy_speed_scale
 
             if abs(drone.x - drone.start_x) > drone.max_range_x:
@@ -250,24 +269,24 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
 
             drone.direction = "right" if drone.velocity_x > 0 else "left"
 
-            # phát hiện player
+            # ph├ít hiß╗çn player
             if distance <= drone.attack_range:
                 drone.state = "dive"
 
         # ======================
-        # DIVE (lao chéo xuống)
+        # DIVE (lao ch├⌐o xuß╗æng)
         # ======================
         elif drone.state == "dive":
 
-            dx = player.centerx - drone.centerx
-            dy = player.centery - drone.centery
+            dx = target.centerx - drone.centerx
+            dy = target.centery - drone.centery
 
             length = max(1, (dx**2 + dy**2) ** 0.5)
 
             drone.x += drone.attack_speed * enemy_speed_scale * dx / length
             drone.y += drone.attack_speed * enemy_speed_scale * dy / length
 
-            # chạm player
+            # chß║ím player
             if drone.colliderect(player):
                 stomped = (
                     player.velocity_y > 0
@@ -289,12 +308,12 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
                     player.set_invincible()
                     drone.state = "rise"
 
-            # nếu lao quá thấp
+            # nß║┐u lao qu├í thß║Ñp
             if drone.y > drone.start_y + TILE_SIZE * 3:
                 drone.state = "rise"
 
         # ======================
-        # RISE (bay chéo lên lại)
+        # RISE (bay ch├⌐o l├¬n lß║íi)
         # ======================
         elif drone.state == "rise":
 
@@ -306,7 +325,7 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
             drone.x += drone.attack_speed * enemy_speed_scale * dx / length
             drone.y += drone.attack_speed * enemy_speed_scale * dy / length
 
-            # về vị trí ban đầu
+            # vß╗ü vß╗ï tr├¡ ban ─æß║ºu
             if abs(drone.x - drone.start_x) < 5 and abs(drone.y - drone.start_y) < 5:
                 drone.x = drone.start_x
                 drone.y = drone.start_y
@@ -345,7 +364,8 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
                 player.set_invincible()
     
     for enemy in enemies2:
-        distance = abs(enemy.x - player.x)
+        target = nearest_target(enemy)
+        distance = abs(enemy.x - target.x)
         if distance <= TILE_SIZE * 3:
             enemy.state = "attack"
         else:
@@ -369,16 +389,16 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
 
         # ===== ATTACK =====
         elif enemy.state == "attack":
-            # Đứng yên
-            # KHÔNG update x
+            # ─Éß╗⌐ng y├¬n
+            # KH├öNG update x
 
-            # quay mặt về player
-            if player.centerx < enemy.centerx:
+            # quay mß║╖t vß╗ü player
+            if target.centerx < enemy.centerx:
                 enemy.direction = "left"
             else:
                 enemy.direction = "right"
 
-            enemy.set_shooting(player, enemy)
+            enemy.set_shooting(target, enemy)
         # if player.x < enemy.x:
         #     enemy.direction = "left"
         # else:
@@ -394,7 +414,7 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
             player.health = max(0, player.health - INFANTRYMAN_DAMAGE)
             player.set_invincible()
         
-        enemy.set_shooting(player, enemy)
+        enemy.set_shooting(target, enemy)
         for bullet in enemy.bullets:
             bullet.x += bullet.velocity_x * enemy_speed_scale
             # bullet.y += bullet.velocity_y
@@ -416,7 +436,7 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
             elif item.image == big_life_energy_image:
                 player.health = min(player.health + 66, player.max_health)
             elif item.image == time_warp_item_image or getattr(item, "effect_type", None) == "time_warp":
-                player.add_time_warp_charge(TIME_WARP_MAX_CHARGES)
+                player.add_time_warp_charge()
             elif item.image == boss_key_item_image or getattr(item, "effect_type", None) == "boss_key":
                 player.has_boss_key = True
                 player.exit_zones = [tile.copy() for tile in tiles if getattr(tile, "is_door", False)]
@@ -429,7 +449,7 @@ def move(player, tiles, enemies, enemies2, shurikens, items, spikes, drones, bos
             player.reached_exit = True
             break
     
-    # xoá enemy chết
+    # xo├í enemy chß║┐t
     enemies[:] = [e for e in enemies if e.health > 0]
     enemies2[:] = [e for e in enemies2 if e.health > 0]
     drones[:] = [d for d in drones if d.health > 0]
@@ -465,14 +485,25 @@ def check_tile_collision_y(character, tiles):
             character.jumping = False
         character.velocity_y = 0    
         
-def move_player_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses):
-    move_map_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses)
+def move_player_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses, linked_players=None):
+    world_parts = background_tiles + tiles + spikes
+    if world_parts:
+        world_min_x = min(part.x for part in world_parts)
+        world_max_right = max(part.x + part.width for part in world_parts)
+
+        projected_min_x = world_min_x + velocity_x
+        projected_max_right = world_max_right + velocity_x
+
+        if projected_min_x > 0 or projected_max_right < GAME_WIDTH:
+            return
+
+    move_map_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses, linked_players=linked_players)
     tile = check_tile_collision(player, tiles)
     if tile is not None:
-        move_map_x(player, -velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses)
+        move_map_x(player, -velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses, linked_players=linked_players)
 
 
-def move_map_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses):
+def move_map_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, items, spikes, drones, bosses, linked_players=None):
     for background_tile in background_tiles:
         background_tile.x += velocity_x
         
@@ -508,3 +539,11 @@ def move_map_x(player, velocity_x, background_tiles, tiles, enemies, enemies2, i
         boss.x += velocity_x
         for p in boss.projectiles:
             p.x += velocity_x
+
+    if linked_players:
+        for linked in linked_players:
+            linked.x += velocity_x
+            for shuriken in linked.shurikens:
+                shuriken.x += velocity_x
+            for exit_zone in linked.exit_zones:
+                exit_zone.x += velocity_x

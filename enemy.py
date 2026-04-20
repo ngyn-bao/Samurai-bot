@@ -33,12 +33,24 @@ class Metall(pygame.Rect):
             else:
                 self.image = infantryman_image_left
 
-    def set_shooting(self, player, enemy):
-        distance = abs(self.x - player.x)
+    def set_shooting(self, player, enemy, all_players=None):
+        targets = all_players if all_players else [player]
+
+        def nearest_target():
+            return min(targets, key=lambda p: abs(self.centerx - p.centerx))
+
+        player = nearest_target()
+        distance = abs(self.centerx - player.centerx)
 
         if distance <= self.melee_safe_range:
-            self.guarding = True
-            self.aggro_started_at = 0
+            self.guarding = False
+            now = pygame.time.get_ticks()
+            if now - self.last_fired > self.shoot_cooldown_ms:
+                self.last_fired = now
+                self.shooting = True
+                self.bullets.append(Bullet(enemy, -INFANTRYMAN_BULLET_VELOCITY_Y))
+                self.bullets.append(Bullet(enemy, 0))
+                self.bullets.append(Bullet(enemy, INFANTRYMAN_BULLET_VELOCITY_Y))
             return
 
         self.guarding = False

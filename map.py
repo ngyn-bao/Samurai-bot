@@ -6,6 +6,7 @@ from items import ItemBox
 from images import floor_tile_image, spike_image, rock_tile1_image, rock_tile2_image, rock_tile3_image, rock_tile4_image, door_tile_image, beam_tile_image, room_tile_image, wall_tile_image
 
 def append_tiles(map_code, background_tiles, tiles, tile):
+    tile.kind = getattr(tile, "kind", "rock1")
     if map_code < 0:
         background_tiles.append(tile)
     else:
@@ -21,28 +22,47 @@ def create_map(player, background_tiles, tiles, enemies, enemies2, spikes, drone
             if map_code == 0:
                 continue #empty tile
             elif abs(map_code) == 1:
-                append_tiles(map_code, background_tiles, tiles,Tile(x, y, rock_tile1_image))
+                t = Tile(x, y, rock_tile1_image)
+                t.kind = "rock1"
+                append_tiles(map_code, background_tiles, tiles, t)
             elif abs(map_code) == 2:
-                append_tiles(map_code, background_tiles, tiles,Tile(x, y, rock_tile2_image))
+                t = Tile(x, y, rock_tile2_image)
+                t.kind = "rock2"
+                append_tiles(map_code, background_tiles, tiles, t)
             elif abs(map_code) == 3:
-                append_tiles(map_code, background_tiles, tiles,Tile(x, y, rock_tile3_image))
+                t = Tile(x, y, rock_tile3_image)
+                t.kind = "rock3"
+                append_tiles(map_code, background_tiles, tiles, t)
             elif abs(map_code) == 4:
-                append_tiles(map_code, background_tiles, tiles,Tile(x, y, rock_tile4_image))
+                t = Tile(x, y, rock_tile4_image)
+                t.kind = "rock4"
+                append_tiles(map_code, background_tiles, tiles, t)
             elif abs(map_code) == 5:
-                append_tiles(map_code, background_tiles, tiles,Tile(x, y, floor_tile_image))
+                t = Tile(x, y, floor_tile_image)
+                t.kind = "floor"
+                append_tiles(map_code, background_tiles, tiles, t)
             elif abs(map_code) == 6:
-                append_tiles(map_code, background_tiles, tiles,Tile(x, y, wall_tile_image))
+                t = Tile(x, y, wall_tile_image)
+                t.kind = "wall"
+                append_tiles(map_code, background_tiles, tiles, t)
             elif map_code == 7:
-                background_tiles.append(Tile(x, y, beam_tile_image))
+                t = Tile(x, y, beam_tile_image)
+                t.kind = "beam"
+                background_tiles.append(t)
             elif map_code == 8:
-                spikes.append(Tile(x, y, spike_image))
+                t = Tile(x, y, spike_image)
+                t.kind = "spike"
+                spikes.append(t)
             elif map_code == 9:
                 door_tile = Tile(x, y, door_tile_image)
+                door_tile.kind = "door"
                 door_tile.is_door = True
                 door_tile.is_open = False
                 tiles.append(door_tile)
             elif map_code == 10:
-                background_tiles.append(Tile(x, y, room_tile_image))
+                t = Tile(x, y, room_tile_image)
+                t.kind = "room"
+                background_tiles.append(t)
             elif map_code == 11:
                 enemies.append(Metall(x, y))
             elif map_code == 12:
@@ -52,4 +72,6 @@ def create_map(player, background_tiles, tiles, enemies, enemies2, spikes, drone
             elif map_code == 14:
                 bosses.append(SpiderBoss(x, y))
             elif map_code == 15:
-                tiles.append(ItemBox(x, y))
+                box = ItemBox(x, y)
+                box.kind = "item_box"
+                tiles.append(box)
