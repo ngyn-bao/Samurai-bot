@@ -181,6 +181,9 @@ class Game:
 
         draw_snapshot(self.window, self.last_snapshot)
 
+        if self.paused:
+            self._draw_pause_menu()
+
     def _run_host_or_single_frame(self):
         if self.mode == "host":
             self.net.poll_connect()
